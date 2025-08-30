@@ -12,8 +12,8 @@ onnx_model = onnx.load(onnx_model_path)
 # 创建ONNX Runtime推理会话
 ort_session = onnxruntime.InferenceSession(onnx_model_path)
 
-image1 = cv2.imread(r'1.jpg')
-image2 = cv2.imread(r'2.jpg')
+image1 = cv2.imread(r'1.png')
+image2 = cv2.imread(r'2.png')
 
 image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
 image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2RGB)
