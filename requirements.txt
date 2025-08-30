@@ -1,4 +1,4 @@
-Pillow==9.5.0
-torch==1.13.1+cu116
-torchvision==0.14.1+cu116
+Pillow==11.3.0
+torch==2.8.0+cu128
+torchvision==0.23.0+cu128
 tqdm==4.64.1
