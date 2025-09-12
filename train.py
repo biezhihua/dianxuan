@@ -197,7 +197,7 @@ if __name__ == '__main__':
     mymox = Siamese()  # 重新训练
     # mymox = torch.load('./bj.pth') # 迁移学习
 
-    epoch = 10 # 训练多少epoch
+    epoch = 100 # 训练多少epoch
 
     mymox.to(device)
     Adme = optim.Adam(mymox.parameters(),lr=0.0001)

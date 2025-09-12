@@ -12,8 +12,8 @@ onnx_model = onnx.load(onnx_model_path)
 # 创建ONNX Runtime推理会话
 ort_session = onnxruntime.InferenceSession(onnx_model_path)
 
-image1 = cv2.imread(r'1.png')
-image2 = cv2.imread(r'2.png')
+image1 = cv2.imread(r'1.jpg')
+image2 = cv2.imread(r'2.jpg')
 
 image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
 image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2RGB)
@@ -32,5 +32,10 @@ input2 = np.expand_dims(input2, axis=0)
 
 outputs = ort_session.run(None, {'x1': input1, 'x2': input2})
 
+
+# outputs 是一个列表，包含模型的所有输出
+# outputs[0] 获取第一个输出（假设模型只有一个输出）
+# outputs[0][0] 获取批次中的第一个样本的输出
+# outputs[0][0][0] 获取输出的具体值
 # 输出
 print(outputs[0][0][0])
