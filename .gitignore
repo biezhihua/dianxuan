@@ -1,0 +1,4 @@
+train/*
+val/*
+bj.pth
+model.onnx
