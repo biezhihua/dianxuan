@@ -1,4 +1,4 @@
 train/*
 val/*
-bj.pth
+model.pth
 model.onnx

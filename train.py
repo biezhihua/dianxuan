@@ -1,4 +1,3 @@
-
 import torch.nn as nn
 import torch
 import torch.utils
@@ -14,10 +13,10 @@ import torchvision.models as models
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 if torch.cuda.is_available():
     x = "cuda"
-    print('正在使用gpu训练')
+    print("正在使用gpu训练")
 else:
-    x = 'cpu'
-    print('正在使用cpu训练')
+    x = "cpu"
+    print("正在使用cpu训练")
 
 device = torch.device(x)
 
@@ -26,33 +25,52 @@ mymod = models.vgg16(pretrained=True)
 del mymod.avgpool
 del mymod.classifier
 
+
 def getletbie(path):
     data = {}
     for i in os.listdir(path):
-        data[i] = [path+'/'+i+'/'+ik for ik in os.listdir(path+'/'+i)]
+        data[i] = [path + "/" + i + "/" + ik for ik in os.listdir(path + "/" + i)]
     return data
 
-def getrandom(data, lb, ko=0):
-    keylist = lb.keys()
-    j = list(keylist)
-    j.remove(data)
-    if ko == 1:
-        f = data
-    else:
-        f = random.choice(j)
-    return random.choice(lb[f])
 
+def getrandom(data, data_list, ko=0):
+    print(f"getrandom data={data}")
+
+    keys = data_list.keys()
+    new_keys = list(keys)
+    new_keys.remove(data)
+
+    if ko == 1:
+        target_key = data
+    else:
+        target_key = random.choice(new_keys)
+
+    print(f"getrandom target_key={target_key}")
+
+    target_list = data_list[target_key]
+
+    if len(target_list) == 0:
+        print(f"error data is 0 dataf={data}")
+
+    ret = random.choice(target_list)
+
+    print(f"getrandom ret={ret}")
+
+    return ret
 
 
 def getsjj(data):
     alldata = []
     for i in data:
         for k in data[i]:
-            ku = [[k, getrandom(i,data), 0], [k, getrandom(i,data, 1), 1]]
+            k1 = [k, getrandom(i, data, 0), 0]
+            k2 = [k, getrandom(i, data, 1), 1]
+            ku = [k1, k2]
             random.shuffle(ku)
             alldata.append(ku)
 
     return alldata
+
 
 class Siamese(nn.Module):
     def __init__(self, pretrained=True):
@@ -69,7 +87,6 @@ class Siamese(nn.Module):
         x1 = self.resnet(x1)
         x2 = self.resnet(x2)
 
-
         x1 = torch.flatten(x1, 1)
         x2 = torch.flatten(x2, 1)
         x = torch.abs(x1 - x2)
@@ -78,18 +95,20 @@ class Siamese(nn.Module):
         x = self.sgm(x)
         return x
 
+
 class Datasjj(Dataset):
     def __init__(self, data):
         super().__init__()
         self.data = data
-        self.l =len(self.data)
-        self.tpzq = transforms.Compose([
-            transforms.Resize((105, 105)),
-            transforms.RandomRotation(40),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor()
-
-        ])
+        self.l = len(self.data)
+        self.tpzq = transforms.Compose(
+            [
+                transforms.Resize((105, 105)),
+                transforms.RandomRotation(40),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+            ]
+        )
 
     def __getitem__(self, item):
         k = self.data[item]
@@ -110,9 +129,15 @@ class Datasjj(Dataset):
         c = c.to(device).unsqueeze(0)
         d2 = d2.to(device).unsqueeze(0)
         c2 = c2.to(device).unsqueeze(0)
-        return torch.concat([d, d2], dim=0), torch.concat([c, c2], dim=0), torch.tensor([k[0][2], k[1][2]],dtype=torch.float).to(device)
+        return (
+            torch.concat([d, d2], dim=0),
+            torch.concat([c, c2], dim=0),
+            torch.tensor([k[0][2], k[1][2]], dtype=torch.float).to(device),
+        )
+
     def __len__(self):
         return self.l
+
 
 def train():
     mymox.train()
@@ -121,13 +146,13 @@ def train():
     zql = 0
 
     mk = tqdm(traf)
-    for k,x, t in mk:
+    for k, x, t in mk:
         k = k.view(k.shape[0] * k.shape[1], k.shape[2], k.shape[3], k.shape[4])
         x = x.view(x.shape[0] * x.shape[1], x.shape[2], x.shape[3], x.shape[4])
-        t = t.view(t.shape[0]* t.shape[1], 1)
+        t = t.view(t.shape[0] * t.shape[1], 1)
         Adme.zero_grad()
 
-        out = mymox(k,x)
+        out = mymox(k, x)
         ls = myloss(out, t)
         ls.backward()
         Adme.step()
@@ -138,17 +163,13 @@ def train():
 
         zql += d.item()
 
-
-
-        idx+=1
-        mk.set_description(desc='loss [{}] zql [{}]'.format(allloss/idx, zql/idx))
-    return allloss/idx
-
-
+        idx += 1
+        mk.set_description(desc="loss [{}] zql [{}]".format(allloss / idx, zql / idx))
+    return allloss / idx
 
 
 def getSjTrain():
-    f = getletbie('./train')
+    f = getletbie("./train")
     sjj = getsjj(f)
     tra = Datasjj(sjj)
     f = DataLoader(tra, shuffle=True, batch_size=20)
@@ -157,12 +178,13 @@ def getSjTrain():
 
 
 def getSjText():
-    f = getletbie('./val')
+    f = getletbie("./val")
     sjj = getsjj(f)
     tra = Datasjj(sjj)
     f = DataLoader(tra, shuffle=True, batch_size=10)
 
     return f
+
 
 def text():
     mymox.eval()
@@ -176,7 +198,7 @@ def text():
 
             k = k.view(k.shape[0] * k.shape[1], k.shape[2], k.shape[3], k.shape[4])
             x = x.view(x.shape[0] * x.shape[1], x.shape[2], x.shape[3], x.shape[4])
-            t = t.view(t.shape[0]* t.shape[1], 1)
+            t = t.view(t.shape[0] * t.shape[1], 1)
             out = mymox(k, x)
             ls = myloss(out, t)
 
@@ -188,26 +210,27 @@ def text():
                 d = torch.mean(equal.float())
             zql += d.item()
 
-            mk.set_description(desc='loss [{}] zql [{}]'.format(allloss / idx, zql/idx))
+            mk.set_description(
+                desc="loss [{}] zql [{}]".format(allloss / idx, zql / idx)
+            )
 
 
-if __name__ == '__main__':
-
+if __name__ == "__main__":
 
     mymox = Siamese()  # 重新训练
     # mymox = torch.load('./bj.pth') # 迁移学习
 
-    epoch = 100 # 训练多少epoch
+    epoch = 150  # 训练多少epoch
 
     mymox.to(device)
-    Adme = optim.Adam(mymox.parameters(),lr=0.0001)
+    Adme = optim.Adam(mymox.parameters(), lr=0.0001)
     scheduler = optim.lr_scheduler.StepLR(Adme, step_size=5, gamma=0.1)
     myloss = nn.BCELoss()
 
     ls = 10000
 
     for i in range(epoch):
-        print('epoch', i+1)
+        print("epoch", i + 1)
         traf = getSjTrain()
         texf = getSjText()
         f = train()
@@ -216,10 +239,5 @@ if __name__ == '__main__':
         scheduler.step()
         if f < ls:
             ls = f
-            print('保存模型===>', 'bj.pth')
-            torch.save(mymox,'bj.pth')
-
-
-
-
-
+            print("保存模型===>", "model.pth")
+            torch.save(mymox, "model.pth")
