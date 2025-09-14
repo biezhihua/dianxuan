@@ -1,3 +1,5 @@
+
+# 导入必要的库
 import torch.nn as nn
 import torch
 import torch.utils
@@ -10,234 +12,249 @@ import torch.optim as optim
 from tqdm import tqdm
 import torchvision.models as models
 
+
+# 设置设备为GPU或CPU
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 if torch.cuda.is_available():
-    x = "cuda"
+    device_type = "cuda"
     print("正在使用gpu训练")
 else:
-    x = "cpu"
+    device_type = "cpu"
     print("正在使用cpu训练")
+device = torch.device(device_type)
 
-device = torch.device(x)
 
+# 加载预训练的VGG16模型，并去除最后的池化和分类层，仅保留特征提取部分
 mymod = models.vgg16(pretrained=True)
-
 del mymod.avgpool
 del mymod.classifier
 
 
-def getletbie(path):
+
+def get_class_image_paths(path):
+    """
+    获取每个类别下所有图片的路径。
+    参数:
+        path: 数据集根目录
+    返回:
+        dict: {类别名: [图片路径列表]}
+    """
     data = {}
-    for i in os.listdir(path):
-        data[i] = [path + "/" + i + "/" + ik for ik in os.listdir(path + "/" + i)]
+    for class_name in os.listdir(path):
+        class_dir = os.path.join(path, class_name)
+        data[class_name] = [os.path.join(class_dir, img) for img in os.listdir(class_dir)]
     return data
 
 
-def getrandom(data, data_list, ko=0):
-    print(f"getrandom data={data}")
 
-    keys = data_list.keys()
-    new_keys = list(keys)
-    new_keys.remove(data)
-
-    if ko == 1:
-        target_key = data
+def get_random_image_path(class_name, class_image_dict, same_class=0):
+    """
+    随机获取同类或异类图片路径。
+    参数:
+        class_name: 当前类别名
+        class_image_dict: {类别名: [图片路径列表]}
+        same_class: 是否同类（1为同类，0为异类）
+    返回:
+        图片路径
+    """
+    keys = list(class_image_dict.keys())
+    other_keys = keys.copy()
+    other_keys.remove(class_name)
+    if same_class == 1:
+        target_key = class_name
     else:
-        target_key = random.choice(new_keys)
-
-    print(f"getrandom target_key={target_key}")
-
-    target_list = data_list[target_key]
-
+        target_key = random.choice(other_keys)
+    target_list = class_image_dict[target_key]
     if len(target_list) == 0:
-        print(f"error data is 0 dataf={data}")
-
-    ret = random.choice(target_list)
-
-    print(f"getrandom ret={ret}")
-
-    return ret
+        print(f"error: 类别 {target_key} 没有图片")
+    return random.choice(target_list)
 
 
-def getsjj(data):
-    alldata = []
-    for i in data:
-        for k in data[i]:
-            k1 = [k, getrandom(i, data, 0), 0]
-            k2 = [k, getrandom(i, data, 1), 1]
-            ku = [k1, k2]
+
+def generate_siamese_pairs(class_image_dict):
+    """
+    生成孪生网络训练对，每个样本包含同类和异类图片对。
+    参数:
+        class_image_dict: {类别名: [图片路径列表]}
+    返回:
+        list: [[[img1, img2, label], [img3, img4, label]], ...]
+    """
+    all_pairs = []
+    for class_name in class_image_dict:
+        for img_path in class_image_dict[class_name]:
+            # 异类对 label=0，同类对 label=1
+            pair_diff = [img_path, get_random_image_path(class_name, class_image_dict, 0), 0]
+            pair_same = [img_path, get_random_image_path(class_name, class_image_dict, 1), 1]
+            ku = [pair_diff, pair_same]
             random.shuffle(ku)
-            alldata.append(ku)
+            all_pairs.append(ku)
+    return all_pairs
 
-    return alldata
 
 
-class Siamese(nn.Module):
+class SiameseNetwork(nn.Module):
+    """
+    孪生神经网络模型，输入两张图片，输出相似度。
+    """
     def __init__(self, pretrained=True):
-        super(Siamese, self).__init__()
-        self.resnet = mymod.features
-        self.resnet = self.resnet.eval()
-        self.resnet.to(device)
+        super(SiameseNetwork, self).__init__()
+        self.feature_extractor = mymod.features
+        self.feature_extractor = self.feature_extractor.eval()
+        self.feature_extractor.to(device)
         flat_shape = 512 * 3 * 3
-        self.fully_connect1 = torch.nn.Linear(flat_shape, 512)
-        self.fully_connect2 = torch.nn.Linear(512, 1)
-        self.sgm = nn.Sigmoid()
+        self.fc1 = torch.nn.Linear(flat_shape, 512)
+        self.fc2 = torch.nn.Linear(512, 1)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x1, x2):
-        x1 = self.resnet(x1)
-        x2 = self.resnet(x2)
-
+        # 提取特征
+        x1 = self.feature_extractor(x1)
+        x2 = self.feature_extractor(x2)
+        # 展平
         x1 = torch.flatten(x1, 1)
         x2 = torch.flatten(x2, 1)
+        # 计算特征差异
         x = torch.abs(x1 - x2)
-        x = self.fully_connect1(x)
-        x = self.fully_connect2(x)
-        x = self.sgm(x)
+        x = self.fc1(x)
+        x = self.fc2(x)
+        x = self.sigmoid(x)
         return x
 
 
-class Datasjj(Dataset):
-    def __init__(self, data):
+
+class SiameseDataset(Dataset):
+    """
+    孪生网络数据集，返回两组图片对及其标签。
+    """
+    def __init__(self, pairs):
         super().__init__()
-        self.data = data
-        self.l = len(self.data)
-        self.tpzq = transforms.Compose(
-            [
-                transforms.Resize((105, 105)),
-                transforms.RandomRotation(40),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-            ]
-        )
+        self.pairs = pairs
+        self.length = len(self.pairs)
+        self.transform = transforms.Compose([
+            transforms.Resize((105, 105)),
+            transforms.RandomRotation(40),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+        ])
 
-    def __getitem__(self, item):
-        k = self.data[item]
-
-        d = Image.open(k[0][0])
-        d = self.tpzq(d)
-
-        c = Image.open(k[0][1])
-        c = self.tpzq(c)
-
-        d2 = Image.open(k[1][0])
-        d2 = self.tpzq(d2)
-
-        c2 = Image.open(k[1][1])
-        c2 = self.tpzq(c2)
-
-        d = d.to(device).unsqueeze(0)
-        c = c.to(device).unsqueeze(0)
-        d2 = d2.to(device).unsqueeze(0)
-        c2 = c2.to(device).unsqueeze(0)
+    def __getitem__(self, idx):
+        pair1, pair2 = self.pairs[idx]
+        img1 = self.transform(Image.open(pair1[0]))
+        img2 = self.transform(Image.open(pair1[1]))
+        img3 = self.transform(Image.open(pair2[0]))
+        img4 = self.transform(Image.open(pair2[1]))
+        img1 = img1.to(device).unsqueeze(0)
+        img2 = img2.to(device).unsqueeze(0)
+        img3 = img3.to(device).unsqueeze(0)
+        img4 = img4.to(device).unsqueeze(0)
         return (
-            torch.concat([d, d2], dim=0),
-            torch.concat([c, c2], dim=0),
-            torch.tensor([k[0][2], k[1][2]], dtype=torch.float).to(device),
+            torch.concat([img1, img3], dim=0),
+            torch.concat([img2, img4], dim=0),
+            torch.tensor([pair1[2], pair2[2]], dtype=torch.float).to(device),
         )
 
     def __len__(self):
-        return self.l
+        return self.length
 
 
-def train():
+
+def train_one_epoch():
+    """
+    训练一个epoch，返回平均损失。
+    """
     mymox.train()
-    allloss = 0
-    idx = 0
-    zql = 0
-
-    mk = tqdm(traf)
-    for k, x, t in mk:
+    total_loss = 0
+    total_acc = 0
+    batch_count = 0
+    progress_bar = tqdm(traf)
+    for k, x, t in progress_bar:
+        # 展平batch维度
         k = k.view(k.shape[0] * k.shape[1], k.shape[2], k.shape[3], k.shape[4])
         x = x.view(x.shape[0] * x.shape[1], x.shape[2], x.shape[3], x.shape[4])
         t = t.view(t.shape[0] * t.shape[1], 1)
         Adme.zero_grad()
-
         out = mymox(k, x)
-        ls = myloss(out, t)
-        ls.backward()
+        loss = myloss(out, t)
+        loss.backward()
         Adme.step()
-        allloss += ls.item()
+        total_loss += loss.item()
         with torch.no_grad():
             equal = torch.eq(torch.round(out), t)
-            d = torch.mean(equal.float())
-
-        zql += d.item()
-
-        idx += 1
-        mk.set_description(desc="loss [{}] zql [{}]".format(allloss / idx, zql / idx))
-    return allloss / idx
+            acc = torch.mean(equal.float())
+        total_acc += acc.item()
+        batch_count += 1
+        progress_bar.set_description(desc=f"loss [{total_loss / batch_count:.4f}] acc [{total_acc / batch_count:.4f}]")
+    return total_loss / batch_count
 
 
-def getSjTrain():
-    f = getletbie("./train")
-    sjj = getsjj(f)
-    tra = Datasjj(sjj)
-    f = DataLoader(tra, shuffle=True, batch_size=20)
 
-    return f
-
-
-def getSjText():
-    f = getletbie("./val")
-    sjj = getsjj(f)
-    tra = Datasjj(sjj)
-    f = DataLoader(tra, shuffle=True, batch_size=10)
-
-    return f
+def get_train_loader():
+    """
+    获取训练集的DataLoader。
+    """
+    class_image_dict = get_class_image_paths("./train")
+    pairs = generate_siamese_pairs(class_image_dict)
+    dataset = SiameseDataset(pairs)
+    loader = DataLoader(dataset, shuffle=True, batch_size=20)
+    return loader
 
 
-def text():
+
+def get_val_loader():
+    """
+    获取验证集的DataLoader。
+    """
+    class_image_dict = get_class_image_paths("./val")
+    pairs = generate_siamese_pairs(class_image_dict)
+    dataset = SiameseDataset(pairs)
+    loader = DataLoader(dataset, shuffle=True, batch_size=10)
+    return loader
+
+
+
+def validate():
+    """
+    验证模型在验证集上的表现，输出平均损失和准确率。
+    """
     mymox.eval()
-    allloss = 0
-    zql = 0
-    idx = 0
-    mk = tqdm(texf)
+    total_loss = 0
+    total_acc = 0
+    batch_count = 0
+    progress_bar = tqdm(texf)
     with torch.no_grad():
-        for k, x, t in mk:
-            # t = t.view(t.shape[0], 1)
-
+        for k, x, t in progress_bar:
             k = k.view(k.shape[0] * k.shape[1], k.shape[2], k.shape[3], k.shape[4])
             x = x.view(x.shape[0] * x.shape[1], x.shape[2], x.shape[3], x.shape[4])
             t = t.view(t.shape[0] * t.shape[1], 1)
             out = mymox(k, x)
-            ls = myloss(out, t)
+            loss = myloss(out, t)
+            total_loss += loss.item()
+            batch_count += 1
+            equal = torch.eq(torch.round(out), t)
+            acc = torch.mean(equal.float())
+            total_acc += acc.item()
+            progress_bar.set_description(desc=f"loss [{total_loss / batch_count:.4f}] acc [{total_acc / batch_count:.4f}]")
 
-            allloss += ls.item()
-            idx += 1
-
-            with torch.no_grad():
-                equal = torch.eq(torch.round(out), t)
-                d = torch.mean(equal.float())
-            zql += d.item()
-
-            mk.set_description(
-                desc="loss [{}] zql [{}]".format(allloss / idx, zql / idx)
-            )
 
 
 if __name__ == "__main__":
-
-    mymox = Siamese()  # 重新训练
+    # 实例化孪生网络模型
+    mymox = SiameseNetwork()  # 重新训练
     # mymox = torch.load('./bj.pth') # 迁移学习
-
-    epoch = 150  # 训练多少epoch
-
+    epoch = 150  # 训练轮数
     mymox.to(device)
     Adme = optim.Adam(mymox.parameters(), lr=0.0001)
     scheduler = optim.lr_scheduler.StepLR(Adme, step_size=5, gamma=0.1)
     myloss = nn.BCELoss()
-
-    ls = 10000
-
+    best_loss = float('inf')
     for i in range(epoch):
         print("epoch", i + 1)
-        traf = getSjTrain()
-        texf = getSjText()
-        f = train()
-
-        text()
+        traf = get_train_loader()
+        texf = get_val_loader()
+        avg_loss = train_one_epoch()
+        validate()
         scheduler.step()
-        if f < ls:
-            ls = f
-            print("保存模型===>", "model.pth")
+        if avg_loss < best_loss:
+            best_loss = avg_loss
             torch.save(mymox, "model.pth")
+            print("save model ===> model.pth")
