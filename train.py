@@ -192,7 +192,9 @@ def get_train_loader():
     """
     获取训练集的DataLoader。
     """
-    class_image_dict = get_class_image_paths("./train")
+    target_path = "./train"
+    target_path = "E:\Projects\github\soda_mhxy\py_32\others\chengyu_classify_final"
+    class_image_dict = get_class_image_paths(target_path)
     pairs = generate_siamese_pairs(class_image_dict)
     dataset = SiameseDataset(pairs)
     loader = DataLoader(dataset, shuffle=True, batch_size=20)
@@ -241,7 +243,7 @@ if __name__ == "__main__":
     # 实例化孪生网络模型
     mymox = SiameseNetwork()  # 重新训练
     # mymox = torch.load('./bj.pth') # 迁移学习
-    epoch = 150  # 训练轮数
+    epoch = 200  # 训练轮数
     mymox.to(device)
     Adme = optim.Adam(mymox.parameters(), lr=0.0001)
     scheduler = optim.lr_scheduler.StepLR(Adme, step_size=5, gamma=0.1)
