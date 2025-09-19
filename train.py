@@ -11,6 +11,8 @@ import random
 import torch.optim as optim
 from tqdm import tqdm
 import torchvision.models as models
+import argparse
+from datetime import datetime
 
 
 # 设置设备为GPU或CPU
@@ -188,28 +190,32 @@ def train_one_epoch():
 
 
 
-def get_train_loader():
+def get_train_loader(train_dir, batch_size=20):
     """
     获取训练集的DataLoader。
+    参数:
+        train_dir: 训练数据集目录路径，直接包含各个类别子文件夹
+        batch_size: 批次大小
     """
-    target_path = "./train"
-    target_path = "E:\Projects\github\soda_mhxy\py_32\others\chengyu_classify_final"
-    class_image_dict = get_class_image_paths(target_path)
+    class_image_dict = get_class_image_paths(train_dir)
     pairs = generate_siamese_pairs(class_image_dict)
     dataset = SiameseDataset(pairs)
-    loader = DataLoader(dataset, shuffle=True, batch_size=20)
+    loader = DataLoader(dataset, shuffle=True, batch_size=batch_size)
     return loader
 
 
 
-def get_val_loader():
+def get_val_loader(val_dir, batch_size=10):
     """
     获取验证集的DataLoader。
+    参数:
+        val_dir: 验证数据集目录路径，直接包含各个类别子文件夹
+        batch_size: 批次大小
     """
-    class_image_dict = get_class_image_paths("./val")
+    class_image_dict = get_class_image_paths(val_dir)
     pairs = generate_siamese_pairs(class_image_dict)
     dataset = SiameseDataset(pairs)
-    loader = DataLoader(dataset, shuffle=True, batch_size=10)
+    loader = DataLoader(dataset, shuffle=True, batch_size=batch_size)
     return loader
 
 
@@ -238,21 +244,86 @@ def validate():
             progress_bar.set_description(desc=f"loss [{total_loss / batch_count:.4f}] acc [{total_acc / batch_count:.4f}]")
 
 
+def export_to_onnx(model, output_path=None):
+    """
+    将训练好的模型导出为ONNX格式。
+    参数:
+        model: 训练好的PyTorch模型
+        output_path: 输出文件路径，如果为None则自动生成时间戳文件名
+    """
+    if output_path is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = f'model_{timestamp}.onnx'
+    
+    # 创建虚拟输入数据
+    dummy_input = (torch.randn(1, 3, 105, 105).to(device), torch.randn(1, 3, 105, 105).to(device))
+    
+    # 设置模型为评估模式
+    model.eval()
+    
+    try:
+        # 导出为ONNX格式（使用与原始export.py相同的简洁参数）
+        torch.onnx.export(model, dummy_input, output_path, input_names=["x1", "x2"])
+        print(f"模型已成功导出为ONNX格式: {output_path}")
+        return output_path
+    except Exception as e:
+        print(f"导出ONNX模型时出错: {e}")
+        return None
+
+
 
 if __name__ == "__main__":
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='孪生神经网络训练脚本')
+    parser.add_argument('--train_dir', type=str, 
+                        default=r'E:\Projects\github\soda_mhxy\py_32\others\chengyu_classify_final',
+                        help='训练数据集目录路径，直接包含各个类别子文件夹')
+    parser.add_argument('--val_dir', type=str, default='./val',
+                        help='验证数据集目录路径，如果不指定则使用train_dir')
+    parser.add_argument('--epochs', type=int, default=200, help='训练轮数')
+    parser.add_argument('--lr', type=float, default=0.0001, help='学习率')
+    parser.add_argument('--batch_size_train', type=int, default=20, help='训练批次大小')
+    parser.add_argument('--batch_size_val', type=int, default=10, help='验证批次大小')
+    parser.add_argument('--auto_export', action='store_true', help='训练完成后自动导出为ONNX格式')
+    parser.add_argument('--onnx_path', type=str, default=None, help='ONNX文件输出路径，如果不指定则自动生成时间戳文件名')
+    
+    args = parser.parse_args()
+    
+    print(f"训练数据目录: {args.train_dir}")
+    print(f"训练轮数: {args.epochs}")
+    print(f"学习率: {args.lr}")
+    print(f"自动导出ONNX: {args.auto_export}")
+    if args.auto_export and args.onnx_path:
+        print(f"ONNX输出路径: {args.onnx_path}")
+    
+    # 设置验证目录
+    if args.val_dir is None:
+        args.val_dir = args.train_dir
+    
+    # 检查数据目录是否存在
+    if not os.path.exists(args.train_dir):
+        print(f"错误: 训练目录不存在: {args.train_dir}")
+        exit(1)
+    if not os.path.exists(args.val_dir):
+        print(f"错误: 验证目录不存在: {args.val_dir}")
+        exit(1)
+    
+    print(f"验证数据目录: {args.val_dir}")
+    
     # 实例化孪生网络模型
     mymox = SiameseNetwork()  # 重新训练
     # mymox = torch.load('./bj.pth') # 迁移学习
-    epoch = 200  # 训练轮数
+    
     mymox.to(device)
-    Adme = optim.Adam(mymox.parameters(), lr=0.0001)
+    Adme = optim.Adam(mymox.parameters(), lr=args.lr)
     scheduler = optim.lr_scheduler.StepLR(Adme, step_size=5, gamma=0.1)
     myloss = nn.BCELoss()
     best_loss = float('inf')
-    for i in range(epoch):
+    
+    for i in range(args.epochs):
         print("epoch", i + 1)
-        traf = get_train_loader()
-        texf = get_val_loader()
+        traf = get_train_loader(args.train_dir, args.batch_size_train)
+        texf = get_val_loader(args.val_dir, args.batch_size_val)
         avg_loss = train_one_epoch()
         validate()
         scheduler.step()
@@ -260,3 +331,15 @@ if __name__ == "__main__":
             best_loss = avg_loss
             torch.save(mymox, "model.pth")
             print("save model ===> model.pth")
+    
+    print("\n训练完成！")
+    print(f"最佳损失值: {best_loss:.6f}")
+    
+    # 自动导出ONNX模型
+    if args.auto_export:
+        print("\n开始导出ONNX模型...")
+        onnx_path = export_to_onnx(mymox, args.onnx_path)
+        if onnx_path:
+            print(f"ONNX模型导出成功: {onnx_path}")
+        else:
+            print("ONNX模型导出失败")
