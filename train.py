@@ -253,7 +253,7 @@ def export_to_onnx(model, output_path=None):
     """
     if output_path is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = f'model_{timestamp}.onnx'
+        output_path = f'mhxy_text_sim_model_{timestamp}.onnx'
     
     # 创建虚拟输入数据
     dummy_input = (torch.randn(1, 3, 105, 105).to(device), torch.randn(1, 3, 105, 105).to(device))
