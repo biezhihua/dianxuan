@@ -43,3 +43,15 @@ val
     运行 text.py 文件
 
  ![image](test.jpg)
+
+
+
+### 推送 PUSH
+
+git push BZH main
+
+### 训练
+
+```
+python .\train.py --auto_export --epochs 300     
+```
