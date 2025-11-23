@@ -2,3 +2,4 @@ train/*
 val/*
 model.pth
 model.onnx
+.mypy_cache
