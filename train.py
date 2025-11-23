@@ -244,7 +244,7 @@ def validate():
             progress_bar.set_description(desc=f"loss [{total_loss / batch_count:.4f}] acc [{total_acc / batch_count:.4f}]")
 
 
-def export_to_onnx(model, output_path=None):
+def export_to_onnx(model, output_path=None, epoch=None):
     """
     将训练好的模型导出为ONNX格式。
     参数:
@@ -253,7 +253,7 @@ def export_to_onnx(model, output_path=None):
     """
     if output_path is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = f'mhxy_text_sim_model_{timestamp}.onnx'
+        output_path = f'mhxy_text_sim_model_{epoch}_{timestamp}.onnx'
     
     # 创建虚拟输入数据
     dummy_input = (torch.randn(1, 3, 105, 105).to(device), torch.randn(1, 3, 105, 105).to(device))
@@ -338,7 +338,7 @@ if __name__ == "__main__":
     # 自动导出ONNX模型
     if args.auto_export:
         print("\n开始导出ONNX模型...")
-        onnx_path = export_to_onnx(mymox, args.onnx_path)
+        onnx_path = export_to_onnx(mymox, args.onnx_path, args.epochs)
         if onnx_path:
             print(f"ONNX模型导出成功: {onnx_path}")
         else:
